@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>豆豆云盘搜索</title>
+    <style>
+        /* --- 样式代码和之前一样，保持不变 --- */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f4f7f9;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        h1 {
+            text-align: center;
+            color: #1a73e8;
+            margin-bottom: 25px;
+        }
+        .filter-section {
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        .filter-section legend {
+            font-size: 1em;
+            font-weight: 500;
+            color: #555;
+            padding: 0 10px;
+            margin-left: 10px;
+        }
+        .filter-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+        }
+        .filter-grid label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            padding: 5px 10px;
+            border-radius: 5px;
+            transition: background-color 0.2s;
+        }
+        .filter-grid label:hover {
+            background-color: #f0f0f0;
+        }
+        .filter-grid input[type="checkbox"] {
+            margin-right: 5px;
+        }
+        .search-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+        }
+        #searchInput {
+            flex-grow: 1;
+            padding: 12px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            transition: border-color 0.3s;
+        }
+        #searchInput:focus {
+            outline: none;
+            border-color: #1a73e8;
+        }
+        #searchButton {
+            padding: 12px 20px;
+            font-size: 16px;
+            background-color: #1a73e8;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        #searchButton:hover {
+            background-color: #155ab6;
+        }
+        #loading, #message {
+            text-align: center;
+            font-size: 18px;
+            color: #888;
+            padding: 20px;
+        }
+        .category-block {
+            margin-bottom: 25px;
+        }
+        .category-title {
+            font-size: 1.5em;
+            color: #333;
+            border-bottom: 2px solid #1a73e8;
+            padding-bottom: 8px;
+            margin-bottom: 15px;
+        }
+        .category-block ul {
+            list-style: none;
+            padding: 0;
+        }
+        .category-block li {
+            padding: 12px;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .category-block li:last-child {
+            border-bottom: none;
+        }
+        .category-block a {
+            text-decoration: none;
+            color: #007bff;
+            font-weight: 500;
+            word-break: break-all;
+        }
+        .category-block a:hover {
+            text-decoration: underline;
+        }
+        .category-block .note {
+            font-size: 0.9em;
+            color: #666;
+        }
+        .category-block .date {
+            font-size: 0.8em;
+            color: #999;
+            align-self: flex-end;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>豆豆云盘搜索</h1>
+        
+        <fieldset class="filter-section">
+            <legend>选择要搜索的网盘 (不选则为全部)</legend>
+            <div id="filterContainer" class="filter-grid">
+                <label><input type="checkbox" name="pan_type" value="aliyun"> 阿里云盘</label>
+                <label><input type="checkbox" name="pan_type" value="quark"> 夸克网盘</label>
+                <label><input type="checkbox" name="pan_type" value="baidu"> 百度网盘</label>
+                <label><input type="checkbox" name="pan_type" value="xunlei"> 迅雷网盘</label>
+                <label><input type="checkbox" name="pan_type" value="115"> 115网盘</label>
+                <label><input type="checkbox" name="pan_type" value="tianyi"> 天翼云盘</label>
+                <label><input type="checkbox" name="pan_type" value="uc"> UC网盘</label>
+                <label><input type="checkbox" name="pan_type" value="123"> 123网盘</label>
+            </div>
+        </fieldset>
+
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="输入关键词后按回车或点击按钮...">
+            <button id="searchButton">搜 索</button>
+        </div>
+        <div id="loading" style="display: none;">正在拼命搜索中...</div>
+        <div id="message"></div>
+        <div id="resultsContainer"></div>
+    </div>
+
+    <script>
+        // --- 核心配置区域 ---
+        const ROUTER_IP = ""; 
+        const ROUTER_PORT = "";
+        const API_BASE_URL = `https://hao.tgsou.xyz${ROUTER_IP}:${ROUTER_PORT}`;
+        // --------------------
+
+        const searchInput = document.getElementById('searchInput');
+        const searchButton = document.getElementById('searchButton');
+        const loading = document.getElementById('loading');
+        const message = document.getElementById('message');
+        const resultsContainer = document.getElementById('resultsContainer');
+
+        searchButton.addEventListener('click', performSearch);
+        searchInput.addEventListener('keyup', (event) => {
+            if (event.key === 'Enter') {
+                performSearch();
+            }
+        });
+        
+        async function performSearch() {
+            const keyword = searchInput.value.trim();
+            if (!keyword) {
+                message.textContent = '请输入要搜索的关键词。';
+                return;
+            }
+
+            loading.style.display = 'block';
+            message.textContent = '';
+            resultsContainer.innerHTML = '';
+
+            try {
+                const url = `${API_BASE_URL}/api/search?kw=${encodeURIComponent(keyword)}`;
+                const response = await fetch(url);
+
+                if (!response.ok) {
+                    throw new Error(`网络请求失败: ${response.status} ${response.statusText}`);
+                }
+                
+                // --- V6版核心修复逻辑：使用括号配对法净化数据 ---
+                const rawText = await response.text();
+                
+                const startIndex = rawText.indexOf('{');
+                if (startIndex === -1) {
+                    throw new Error("返回的数据中不包含任何JSON内容。");
+                }
+
+                let openBraces = 0;
+                let endIndex = -1;
+                for (let i = startIndex; i < rawText.length; i++) {
+                    if (rawText[i] === '{') {
+                        openBraces++;
+                    } else if (rawText[i] === '}') {
+                        openBraces--;
+                    }
+                    
+                    if (openBraces === 0) {
+                        endIndex = i + 1;
+                        break; 
+                    }
+                }
+
+                if (endIndex === -1) {
+                    throw new Error("返回的JSON数据格式不完整（括号未配对）。");
+                }
+                
+                const jsonString = rawText.substring(startIndex, endIndex);
+                const data = JSON.parse(jsonString);
+                // --- 修复逻辑结束 ---
+
+                renderCategorizedResults(data);
+
+            } catch (error) {
+                console.error('搜索时发生错误:', error);
+                message.textContent = `发生错误: ${error.message}。请检查软路由服务是否运行，或IP地址是否正确。`;
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        // 分类渲染函数
+        function renderCategorizedResults(responseData) {
+            // 从根对象的 .data 属性里去寻找真正的结果
+            const data = responseData.data;
+            const selectedTypes = Array.from(document.querySelectorAll('input[name="pan_type"]:checked')).map(cb => cb.value);
+
+            if (!data || !data.merged_by_type) {
+                message.textContent = '没有找到分类结果（merged_by_type）。';
+                return;
+            }
+            
+            let totalFound = 0;
+            const categories = data.merged_by_type;
+            const sortedKeys = Object.keys(categories).sort();
+
+            for (const type of sortedKeys) {
+                if (selectedTypes.length === 0 || selectedTypes.includes(type)) {
+                    const items = categories[type];
+                    if (items && items.length > 0) {
+                        totalFound += items.length;
+                        const categoryBlock = document.createElement('div');
+                        categoryBlock.className = 'category-block';
+
+                        const categoryTitle = document.createElement('h3');
+                        categoryTitle.className = 'category-title';
+                        categoryTitle.textContent = `${type.charAt(0).toUpperCase() + type.slice(1)} 网盘 (${items.length}条)`;
+                        categoryBlock.appendChild(categoryTitle);
+
+                        const list = document.createElement('ul');
+                        items.forEach(item => {
+                            const listItem = document.createElement('li');
+                            const linkAnchor = document.createElement('a');
+                            linkAnchor.href = item.url;
+                            linkAnchor.target = '_blank';
+                            linkAnchor.textContent = item.url;
+                            
+                            const notePara = document.createElement('div');
+                            notePara.className = 'note';
+                            notePara.textContent = `备注: ${item.note}`;
+                            
+                            const datePara = document.createElement('div');
+                            datePara.className = 'date';
+                            datePara.textContent = `时间: ${new Date(item.datetime).toLocaleString()}`;
+                            
+                            if (item.password) {
+                                const passwordSpan = document.createElement('span');
+                                passwordSpan.textContent = ` (提取码: ${item.password})`;
+                                passwordSpan.style.color = "#dc3545";
+                                passwordSpan.style.fontWeight = "bold";
+                                linkAnchor.appendChild(passwordSpan);
+                            }
+                            
+                            listItem.appendChild(linkAnchor);
+                            listItem.appendChild(notePara);
+                            listItem.appendChild(datePara);
+                            list.appendChild(listItem);
+                        });
+
+                        categoryBlock.appendChild(list);
+                        resultsContainer.appendChild(categoryBlock);
+                    }
+                }
+            }
+
+            if (totalFound === 0) {
+                message.textContent = '在您选择的分类下没有找到相关结果。';
+            } else {
+                 message.textContent = `在您选择的分类下共找到 ${totalFound} 条结果。`;
+            }
+        }
+    </script>
+</body>
+</html>
